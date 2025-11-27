@@ -12,6 +12,7 @@ import { AppController } from './app.controller';
 import { ENVEnum } from './common/enum/env.enum';
 import { JwtStrategy } from './common/jwt/jwt.strategy';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
+import { LibModule } from './lib/lib.module';
 
 @Module({
   imports: [
@@ -63,6 +64,8 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware';
         },
       }),
     }),
+
+    LibModule,
   ],
   controllers: [AppController],
   providers: [JwtStrategy],

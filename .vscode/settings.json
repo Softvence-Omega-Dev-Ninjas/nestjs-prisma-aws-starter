@@ -29,5 +29,11 @@
   // 🔧 Prettier Config Sync
   "prettier.useEditorConfig": true,
   "prettier.resolveGlobalModules": false,
-  "cSpell.words": ["appleboy", "Buildx", "Caddyfile", "healthcheck"]
+  "cSpell.words": [
+    "appleboy",
+    "Buildx",
+    "Caddyfile",
+    "healthcheck",
+    "softvence"
+  ]
 }
