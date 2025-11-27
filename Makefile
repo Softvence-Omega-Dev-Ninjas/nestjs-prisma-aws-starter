@@ -9,43 +9,48 @@ APP_IMAGE := $(DOCKER_USERNAME)/$(PACKAGE_NAME):$(PACKAGE_VERSION)
 # Compose file
 COMPOSE_FILE := compose.yaml
 
-.PHONY: help build up upd down restart logs clean push containers volumes networks images
+.PHONY: help build up upd down restart logs clean push containers volumes networks images dev-services dev-services-down dev
 
 help:
 	@echo "Available commands:"
-	@echo "  make build        Build the Docker image"
-	@echo "  make up           Start containers (attached)"
-	@echo "  make upd          Start containers (detached)"
-	@echo "  make down         Stop containers"
-	@echo "  make restart      Restart containers"
-	@echo "  make logs         Show logs of all services"
-	@echo "  make clean        Remove containers, networks, volumes created by compose"
-	@echo "  make push         Push the Docker image to Docker Hub"
-	@echo "  make containers   List containers from compose"
-	@echo "  make volumes      List volumes"
-	@echo "  make networks     List networks"
-	@echo "  make images       List images"
+	@echo "  make build             Build the Docker image"
+	@echo "  make up                Start containers (attached) - production"
+	@echo "  make upd               Start containers (detached) - production"
+	@echo "  make down              Stop containers"
+	@echo "  make restart           Restart containers"
+	@echo "  make logs              Show logs of all services"
+	@echo "  make clean             Remove containers, networks, volumes created by compose"
+	@echo "  make push              Push the Docker image to Docker Hub"
+	@echo "  make containers        List containers from compose"
+	@echo "  make volumes           List volumes"
+	@echo "  make networks          List networks"
+	@echo "  make images            List images"
+	@echo ""
+	@echo "Development commands:"
+	@echo "  make dev-services      Start PostgreSQL and Redis for local development"
+	@echo "  make dev-services-down Stop development services"
+	@echo "  make dev               Start dev services and run pnpm dev"
 
 # Build the Docker image
 build:
 	docker build -t $(APP_IMAGE) .
 
-# Start containers (attached)
+# Start containers (attached) - production
 up:
-	docker compose -f $(COMPOSE_FILE) up --remove-orphans
+	docker compose -f $(COMPOSE_FILE) --profile prod up --remove-orphans
 
-# Start containers (detached)
+# Start containers (detached) - production
 upd:
-	docker compose -f $(COMPOSE_FILE) up -d
+	docker compose -f $(COMPOSE_FILE) --profile prod up -d
 
 # Stop containers
 down:
-	docker compose -f $(COMPOSE_FILE) down
+	docker compose -f $(COMPOSE_FILE) --profile prod down
 
 # Restart containers
 restart:
-	docker compose -f $(COMPOSE_FILE) down
-	docker compose -f $(COMPOSE_FILE) up -d
+	docker compose -f $(COMPOSE_FILE) --profile prod restart
+	docker compose -f $(COMPOSE_FILE) --profile prod up
 
 # Logs
 logs:
@@ -53,7 +58,7 @@ logs:
 
 # Cleanup
 clean:
-	docker compose -f $(COMPOSE_FILE) down --volumes --remove-orphans
+	docker compose -f $(COMPOSE_FILE) --profile prod down --volumes --remove-orphans
 	docker rmi $(APP_IMAGE) || true
 
 # List containers
@@ -75,3 +80,21 @@ images:
 # Push image
 push:
 	docker push $(APP_IMAGE)
+
+# Development commands
+# Start development services (PostgreSQL and Redis only)
+dev-services:
+	docker compose -f $(COMPOSE_FILE) --profile dev up -d
+
+# Stop development services
+dev-services-down:
+	docker compose -f $(COMPOSE_FILE) --profile dev down
+
+# Start dev services and run pnpm dev
+dev:
+	@echo "Starting development services..."
+	@$(MAKE) dev-services
+	@echo "Waiting for services to be ready..."
+	@sleep 3
+	@echo "Starting application in development mode..."
+	pnpm dev
