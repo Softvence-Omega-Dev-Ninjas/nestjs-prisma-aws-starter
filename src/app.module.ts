@@ -33,7 +33,7 @@ import { MainModule } from './main/main.module';
 
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
-      serveRoot: '/api/files',
+      serveRoot: '/files',
     }),
 
     BullModule.forRootAsync({

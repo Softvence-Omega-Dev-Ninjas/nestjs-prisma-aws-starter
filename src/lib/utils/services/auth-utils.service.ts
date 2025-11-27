@@ -5,7 +5,7 @@ import { PrismaService } from '@/lib/prisma/prisma.service';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { FileInstance, User } from '@prisma';
+import { FileInstance, OtpType, User } from '@prisma';
 import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
 import { randomBytes, randomInt } from 'crypto';
@@ -52,10 +52,7 @@ export class AuthUtilsService {
     return token;
   }
 
-  async generateTokenPairAndSave(
-    userId: string,
-    payload: JWTPayload,
-  ): Promise<TokenPair> {
+  async generateTokenPairAndSave(payload: JWTPayload): Promise<TokenPair> {
     const accessToken = this.generateToken(payload);
 
     const refreshToken = randomBytes(
@@ -69,7 +66,7 @@ export class AuthUtilsService {
     await this.prisma.client.refreshToken.create({
       data: {
         token: refreshToken,
-        userId,
+        userId: payload.sub,
         expiresAt: refreshTokenExpiresAt,
       },
     });
@@ -107,24 +104,24 @@ export class AuthUtilsService {
     return this.prisma.client.refreshToken.findUnique({ where: { token } });
   }
 
-  generateOtpAndExpiry(minutes = 10): { otp: number; expiryTime: Date } {
+  generateOtpAndExpiry(minutes = 5): { otp: number; expiryTime: Date } {
     const otp = randomInt(1000, 10000);
     const expiryTime = new Date(Date.now() + minutes * 60 * 1000);
     return { otp, expiryTime };
   }
 
-  async validateUserCredentials(email: string, plainPassword: string) {
-    const user = await this.prisma.client.user.findUnique({
-      where: { email },
-      include: { profilePicture: true },
+  async generateOTPAndSave(userId: string, type: OtpType) {
+    const { otp, expiryTime } = this.generateOtpAndExpiry();
+    const hashedOtp = await this.hash(otp.toString());
+    await this.prisma.client.userOtp.create({
+      data: {
+        userId,
+        code: hashedOtp,
+        type,
+        expiresAt: expiryTime,
+      },
     });
-
-    if (!user) return null;
-
-    const isValid = await this.compare(plainPassword, user.password);
-    if (!isValid) return null;
-
-    return this.sanitizeUser<UserResponseDto>(user);
+    return otp;
   }
 
   async getSanitizedUserById(id: string) {
@@ -145,12 +142,6 @@ export class AuthUtilsService {
     if (!user) return null;
 
     return this.sanitizeUser<UserResponseDto>(user);
-  }
-
-  async prepareHashedOtp(plainOtp: number | string) {
-    const otpString = String(plainOtp);
-    const hashed = await this.hash(otpString);
-    return hashed;
   }
 
   async hash(value: string): Promise<string> {
