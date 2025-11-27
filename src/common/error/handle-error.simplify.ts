@@ -7,8 +7,8 @@ import {
   UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma';
 import { AxiosError } from 'axios';
-import { Prisma } from 'generated/client';
 import { AppError } from './handle-error.app';
 
 export function simplifyError(

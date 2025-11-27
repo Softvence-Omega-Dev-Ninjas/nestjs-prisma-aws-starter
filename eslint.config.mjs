@@ -10,7 +10,6 @@ export default defineConfig([
     'dist/*',
     'logs/*',
     'prisma/*',
-    'generated/internal/*',
     'scripts/*',
   ]),
   {
