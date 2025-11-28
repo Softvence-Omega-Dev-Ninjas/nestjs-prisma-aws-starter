@@ -53,7 +53,7 @@ export class AuthLoginService {
     });
 
     // 3. Generate token
-    const token = this.utils.generateTokenPairAndSave({
+    const token = await this.utils.generateTokenPairAndSave({
       email,
       role: updatedUser.role,
       sub: updatedUser.id,
@@ -61,7 +61,7 @@ export class AuthLoginService {
 
     return successResponse(
       {
-        user: this.utils.sanitizeUser(updatedUser),
+        user: await this.utils.sanitizeUser(updatedUser),
         token,
       },
       'Logged in successfully',

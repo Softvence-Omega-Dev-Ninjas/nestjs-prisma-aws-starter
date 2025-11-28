@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty } from 'class-validator';
+import { OtpType } from '@prisma';
+import { IsEmail, IsEnum, IsNotEmpty } from 'class-validator';
 
 export class ResendOtpDto {
   @ApiProperty({
@@ -9,6 +10,15 @@ export class ResendOtpDto {
   @IsEmail()
   @IsNotEmpty()
   email: string;
+
+  @ApiPropertyOptional({
+    example: OtpType.VERIFICATION,
+    description: 'OTP type',
+    enum: OtpType,
+  })
+  @IsNotEmpty()
+  @IsEnum(OtpType)
+  type: OtpType = OtpType.VERIFICATION;
 }
 
 export class VerifyOTPDto {

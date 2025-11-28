@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { FileType } from '@prisma';
 import { LoginDto } from './dto/login.dto';
+import { LogoutDto, RefreshTokenDto } from './dto/logout.dto';
 import { ResendOtpDto, VerifyOTPDto } from './dto/otp.dto';
 import {
   ChangePasswordDto,
@@ -26,13 +27,13 @@ import {
 } from './dto/password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { AuthUpdateProfileService } from './services/auth-update-profile.service';
-import { AuthRegisterService } from './services/auth-register.service';
+import { AuthGetProfileService } from './services/auth-get-profile.service';
 import { AuthLoginService } from './services/auth-login.service';
 import { AuthLogoutService } from './services/auth-logout.service';
 import { AuthOtpService } from './services/auth-otp.service';
 import { AuthPasswordService } from './services/auth-password.service';
-import { AuthGetProfileService } from './services/auth-get-profile.service';
+import { AuthRegisterService } from './services/auth-register.service';
+import { AuthUpdateProfileService } from './services/auth-update-profile.service';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -53,6 +54,18 @@ export class AuthController {
     return this.authRegisterService.register(body);
   }
 
+  @ApiOperation({ summary: 'Verify OTP after Registration or Login' })
+  @Post('verify-otp')
+  async verifyEmail(@Body() body: VerifyOTPDto) {
+    return this.authOtpService.verifyOTP(body);
+  }
+
+  @ApiOperation({ summary: 'Resend OTP to Email' })
+  @Post('resend-otp')
+  async resendOtp(@Body() body: ResendOtpDto) {
+    return this.authOtpService.resendOtp(body);
+  }
+
   @ApiOperation({ summary: 'User Login' })
   @Post('login')
   async login(@Body() body: LoginDto) {
@@ -63,25 +76,18 @@ export class AuthController {
   @ApiBearerAuth()
   @Post('logout')
   @ValidateAuth()
-  async logOut(@GetUser('sub') userId: string) {
-    return this.authLogoutService.logout(userId);
+  async logOut(@GetUser('sub') userId: string, @Body() dto: LogoutDto) {
+    return this.authLogoutService.logout(userId, dto);
   }
 
-  @ApiOperation({ summary: 'Resend OTP to Email' })
-  @Post('resend-otp')
-  async resendOtp(@Body() body: ResendOtpDto) {
-    return this.authOtpService.resendOtp(body.email);
-  }
-
-  @ApiOperation({ summary: 'Verify OTP after Registration or Login' })
-  @Post('verify-otp')
-  async verifyEmail(@Body() body: VerifyOTPDto) {
-    return this.authOtpService.verifyOTP(body);
+  @Post('refresh')
+  async refresh(@Body() dto: RefreshTokenDto) {
+    return this.authLogoutService.refresh(dto);
   }
 
   @ApiOperation({ summary: 'Change Password' })
   @ApiBearerAuth()
-  @Post('change-password')
+  @Post('password/change')
   @ValidateAuth()
   async changePassword(
     @GetUser('sub') userId: string,
@@ -90,14 +96,14 @@ export class AuthController {
     return this.authPasswordService.changePassword(userId, body);
   }
 
-  @ApiOperation({ summary: 'Forgot Password - Send Reset Email' })
-  @Post('forgot-password')
+  @ApiOperation({ summary: 'Forgot Password' })
+  @Post('password/forgot')
   async forgotPassword(@Body() body: ForgotPasswordDto) {
     return this.authPasswordService.forgotPassword(body.email);
   }
 
   @ApiOperation({ summary: 'Reset Password' })
-  @Post('reset-password')
+  @Post('password/reset')
   async resetPassword(@Body() body: ResetPasswordDto) {
     return this.authPasswordService.resetPassword(body);
   }

@@ -3,18 +3,17 @@ import { HandleError } from '@/common/error/handle-error.decorator';
 import { successResponse, TResponse } from '@/common/utils/response.util';
 import { AuthMailService } from '@/lib/mail/services/auth-mail.service';
 import { PrismaService } from '@/lib/prisma/prisma.service';
-import { UtilsService } from '@/lib/utils/utils.service';
+import { AuthUtilsService } from '@/lib/utils/services/auth-utils.service';
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { OtpType } from '@prisma';
 import { ChangePasswordDto, ResetPasswordDto } from '../dto/password.dto';
 
 @Injectable()
 export class AuthPasswordService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly utils: UtilsService,
+    private readonly utils: AuthUtilsService,
     private readonly mailService: AuthMailService,
-    private readonly configService: ConfigService,
   ) {}
 
   @HandleError('Failed to change password')
@@ -26,12 +25,9 @@ export class AuthPasswordService {
       where: { id: userId },
       select: { password: true },
     });
+    if (!user) throw new AppError(404, 'User not found');
 
-    if (!user) {
-      throw new AppError(404, 'User not found');
-    }
-
-    // If user registered via Social login and has no password set
+    // If user registered via social login and has no password set
     if (!user.password) {
       const hashedPassword = await this.utils.hash(dto.newPassword);
       await this.prisma.client.user.update({
@@ -41,18 +37,11 @@ export class AuthPasswordService {
       return successResponse(null, 'Password set successfully');
     }
 
-    // For normal email/password users — require current password check
-    if (!dto.password) {
-      throw new AppError(400, 'Current password is required');
-    }
+    // Normal users must provide current password
+    if (!dto.password) throw new AppError(400, 'Current password is required');
 
-    const isPasswordValid = await this.utils.compare(
-      dto.password,
-      user.password,
-    );
-    if (!isPasswordValid) {
-      throw new AppError(400, 'Invalid current password');
-    }
+    const isValid = await this.utils.compare(dto.password, user.password);
+    if (!isValid) throw new AppError(400, 'Invalid current password');
 
     const hashedPassword = await this.utils.hash(dto.newPassword);
     await this.prisma.client.user.update({
@@ -66,71 +55,59 @@ export class AuthPasswordService {
   @HandleError('Failed to send password reset email')
   async forgotPassword(email: string): Promise<TResponse<any>> {
     const user = await this.prisma.client.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new AppError(404, 'User not found');
-    }
+    if (!user) throw new AppError(404, 'User not found');
 
-    const { otp, expiryTime } = this.utils.generateOtpAndExpiry();
-
-    const hashedOtp = await this.utils.hash(otp.toString());
-
-    await this.prisma.client.user.update({
-      where: { email },
-      data: {
-        otp: hashedOtp,
-        otpExpiresAt: expiryTime,
-        otpType: 'RESET',
+    // Delete existing unexpired RESET OTPs
+    await this.prisma.client.userOtp.deleteMany({
+      where: {
+        userId: user.id,
+        type: OtpType.RESET,
+        expiresAt: { gt: new Date() },
       },
     });
 
+    // Generate OTP and save
+    const otp = await this.utils.generateOTPAndSave(user.id, OtpType.RESET);
+
+    // Send OTP email
     await this.mailService.sendResetPasswordCodeEmail(email, otp.toString());
 
-    return successResponse(null, 'Password reset email sent');
+    return successResponse(null, 'Password reset OTP sent');
   }
 
   @HandleError('Failed to reset password')
   async resetPassword(dto: ResetPasswordDto): Promise<TResponse<any>> {
     const { otp, email, newPassword } = dto;
-
     const user = await this.prisma.client.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new AppError(404, 'User not found');
-    }
+    if (!user) throw new AppError(404, 'User not found');
 
-    // * Check if otp of RESET type is valid
-    if (!user.otp || !user.otpExpiresAt || user.otpType !== 'RESET') {
-      throw new AppError(400, 'OTP is not set. Please request a new one.');
-    }
-
-    // check expiry
-    if (user.otpExpiresAt < new Date()) {
-      throw new AppError(
-        401,
-        'Reset token has expired. Please request a new one.',
-      );
-    }
-
-    // verify token
-    const isMatch = this.utils.compare(otp, user.otp);
-    if (!isMatch) {
-      throw new AppError(403, 'Invalid reset token');
-    }
-
-    // hash new password
-    const hashedPassword = await this.utils.hash(newPassword);
-
-    // update password and invalidate reset token
-    await this.prisma.client.user.update({
-      where: { email },
-      data: {
-        password: hashedPassword,
-        otp: null,
-        otpExpiresAt: null,
-        otpType: null,
-      },
+    // Find latest RESET OTP
+    const userOtp = await this.prisma.client.userOtp.findFirst({
+      where: { userId: user.id, type: OtpType.RESET },
+      orderBy: { createdAt: 'desc' },
     });
 
-    // send email
+    if (!userOtp)
+      throw new AppError(400, 'OTP is not set. Please request a new one.');
+    if (userOtp.expiresAt < new Date()) {
+      await this.prisma.client.userOtp.delete({ where: { id: userOtp.id } });
+      throw new AppError(401, 'OTP has expired. Please request a new one.');
+    }
+
+    const isValid = await this.utils.compare(otp, userOtp.code);
+    if (!isValid) throw new AppError(403, 'Invalid OTP');
+
+    // Hash new password
+    const hashedPassword = await this.utils.hash(newPassword);
+
+    // Update password and delete OTP
+    await this.prisma.client.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+    await this.prisma.client.userOtp.delete({ where: { id: userOtp.id } });
+
+    // Send confirmation email
     await this.mailService.sendPasswordResetConfirmationEmail(email);
 
     return successResponse(null, 'Password reset successfully');
