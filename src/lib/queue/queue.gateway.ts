@@ -1,5 +1,5 @@
 import { ENVEnum } from '@/common/enum/env.enum';
-import { EventsEnum } from '@/common/enum/queue-events.enum';
+import { EventsEnum, QueueEventsEnum } from '@/common/enum/queue-events.enum';
 import { JWTPayload } from '@/common/jwt/jwt.interface';
 import { errorResponse, successResponse } from '@/common/utils/response.util';
 import { Injectable, Logger } from '@nestjs/common';
@@ -141,7 +141,7 @@ export class QueueGateway
 
   public async notifySingleUser(
     userId: string,
-    event: string,
+    event: QueueEventsEnum,
     data: NotificationPayload,
   ) {
     const clients = this.getClients(userId);
@@ -162,19 +162,20 @@ export class QueueGateway
 
   public async notifyMultipleUsers(
     userIds: string[],
-    event: string,
+    event: QueueEventsEnum,
     data: NotificationPayload,
   ) {
     userIds.forEach((id) => this.notifySingleUser(id, event, data));
   }
 
-  public async notifyAllUsers(event: string, data: NotificationPayload) {
-    // Get all connected user IDs
-    const userIds = Array.from(this.clients.keys());
-    if (userIds.length === 0) {
-      this.logger.warn('No users connected for notifyAllUsers');
-      return;
-    }
+  public async notifyAllUsers(
+    event: QueueEventsEnum,
+    data: NotificationPayload,
+  ) {
+    // Get all user from DB
+    const users = await this.prisma.client.user.findMany({
+      select: { id: true },
+    });
 
     // Store notification in DB for all users at once
     const notification = await this.prisma.client.notification.create({
@@ -185,11 +186,18 @@ export class QueueGateway
         meta: data.meta ?? {},
         users: {
           createMany: {
-            data: userIds.map((id) => ({ userId: id })),
+            data: users.map((u) => ({ userId: u.id })),
           },
         },
       },
     });
+
+    // Check if any user is connected
+    const userIds = Array.from(this.clients.keys());
+    if (userIds.length === 0) {
+      this.logger.warn('No users connected for notifyAllUsers');
+      return;
+    }
 
     // Add notificationId to payload
     const payload = { ...data, notificationId: notification.id };
@@ -202,7 +210,7 @@ export class QueueGateway
     this.logger.log(`Notification stored & sent to all users via ${event}`);
   }
 
-  public async emitToAdmins(event: string, data: NotificationPayload) {
+  public async emitToAdmins(event: QueueEventsEnum, data: NotificationPayload) {
     const admins = await this.prisma.client.user.findMany({
       where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
       select: { id: true },
