@@ -1,5 +1,5 @@
-import { HandleError } from '@/common/error/handle-error.decorator';
 import { successResponse, TResponse } from '@/common/utils/response.util';
+import { HandleError } from '@/core/error/handle-error.decorator';
 import { PrismaService } from '@/lib/prisma/prisma.service';
 import { AuthUtilsService } from '@/lib/utils/services/auth-utils.service';
 import { Injectable } from '@nestjs/common';

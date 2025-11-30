@@ -1,9 +1,9 @@
+import { ENVEnum } from '@/common/enum/env.enum';
 import { PrismaService } from '@/lib/prisma/prisma.service';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ENVEnum } from '../enum/env.enum';
 import { JWTPayload } from './jwt.interface';
 
 @Injectable()

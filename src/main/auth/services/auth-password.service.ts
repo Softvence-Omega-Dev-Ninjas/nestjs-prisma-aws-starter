@@ -1,6 +1,6 @@
-import { AppError } from '@/common/error/handle-error.app';
-import { HandleError } from '@/common/error/handle-error.decorator';
 import { successResponse, TResponse } from '@/common/utils/response.util';
+import { AppError } from '@/core/error/handle-error.app';
+import { HandleError } from '@/core/error/handle-error.decorator';
 import { AuthMailService } from '@/lib/mail/services/auth-mail.service';
 import { PrismaService } from '@/lib/prisma/prisma.service';
 import { AuthUtilsService } from '@/lib/utils/services/auth-utils.service';

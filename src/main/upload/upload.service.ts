@@ -1,12 +1,12 @@
 import { PaginationDto } from '@/common/dto/pagination.dto';
-import { AppError } from '@/common/error/handle-error.app';
-import { HandleError } from '@/common/error/handle-error.decorator';
 import {
   successPaginatedResponse,
   successResponse,
   TPaginatedResponse,
   TResponse,
 } from '@/common/utils/response.util';
+import { AppError } from '@/core/error/handle-error.app';
+import { HandleError } from '@/core/error/handle-error.decorator';
 import { S3Service } from '@/lib/file/services/s3.service';
 import { PrismaService } from '@/lib/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';

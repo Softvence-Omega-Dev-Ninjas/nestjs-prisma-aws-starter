@@ -1,5 +1,5 @@
 import { ENVEnum } from '@/common/enum/env.enum';
-import { AppError } from '@/common/error/handle-error.app';
+import { AppError } from '@/core/error/handle-error.app';
 import { PrismaService } from '@/lib/prisma/prisma.service';
 import {
   DeleteObjectCommand,

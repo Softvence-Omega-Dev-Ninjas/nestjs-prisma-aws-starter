@@ -7,7 +7,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as bodyParser from 'body-parser';
 import { AppModule } from './app.module';
 import { ENVEnum } from './common/enum/env.enum';
-import { AllExceptionsFilter } from './common/filter/http-exception.filter';
+import { AllExceptionsFilter } from './core/filter/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });

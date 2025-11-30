@@ -8,9 +8,9 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
-import { UserEnum } from '../enum/user.enum';
 import { IS_PUBLIC_KEY, ROLES_KEY } from './jwt.constants';
 import { RequestWithUser } from './jwt.interface';
+import { UserEnum } from '@/common/enum/user.enum';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {

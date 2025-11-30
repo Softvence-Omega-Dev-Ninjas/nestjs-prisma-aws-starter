@@ -1,7 +1,7 @@
 import { ENVEnum } from '@/common/enum/env.enum';
 import { EventsEnum } from '@/common/enum/queue-events.enum';
-import { JWTPayload } from '@/common/jwt/jwt.interface';
 import { errorResponse, successResponse } from '@/common/utils/response.util';
+import { JWTPayload } from '@/core/jwt/jwt.interface';
 import { PrismaService } from '@/lib/prisma/prisma.service';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';

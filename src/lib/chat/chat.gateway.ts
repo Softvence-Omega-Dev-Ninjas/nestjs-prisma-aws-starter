@@ -1,5 +1,5 @@
 import { EventsEnum } from '@/common/enum/queue-events.enum';
-import { BaseGateway } from '@/common/socket/base.gateway';
+import { BaseGateway } from '@/core/socket/base.gateway';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';

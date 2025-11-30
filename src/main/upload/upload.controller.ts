@@ -1,5 +1,5 @@
 import { PaginationDto } from '@/common/dto/pagination.dto';
-import { ValidateAuth } from '@/common/jwt/jwt.decorator';
+import { ValidateAuth } from '@/core/jwt/jwt.decorator';
 import {
   BadRequestException,
   Body,

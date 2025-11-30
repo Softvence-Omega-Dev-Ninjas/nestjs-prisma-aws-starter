@@ -1,6 +1,6 @@
-import { AppError } from '@/common/error/handle-error.app';
-import { HandleError } from '@/common/error/handle-error.decorator';
 import { successResponse } from '@/common/utils/response.util';
+import { AppError } from '@/core/error/handle-error.app';
+import { HandleError } from '@/core/error/handle-error.decorator';
 import { S3Service } from '@/lib/file/services/s3.service';
 import { PrismaService } from '@/lib/prisma/prisma.service';
 import { AuthUtilsService } from '@/lib/utils/services/auth-utils.service';

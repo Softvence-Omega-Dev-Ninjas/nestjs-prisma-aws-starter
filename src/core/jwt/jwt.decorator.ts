@@ -5,7 +5,7 @@ import {
   SetMetadata,
   UseGuards,
 } from '@nestjs/common';
-import { UserEnum } from '../enum/user.enum';
+import { UserEnum } from '@/common/enum/user.enum';
 import { IS_PUBLIC_KEY, ROLES_KEY } from './jwt.constants';
 import { JwtAuthGuard, RolesGuard } from './jwt.guard';
 import { JWTPayload, RequestWithUser } from './jwt.interface';

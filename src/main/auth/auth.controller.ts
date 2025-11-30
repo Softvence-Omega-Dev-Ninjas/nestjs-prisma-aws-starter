@@ -1,4 +1,4 @@
-import { GetUser, ValidateAuth } from '@/common/jwt/jwt.decorator';
+import { GetUser, ValidateAuth } from '@/core/jwt/jwt.decorator';
 import { MulterService } from '@/lib/file/services/multer.service';
 import {
   Body,

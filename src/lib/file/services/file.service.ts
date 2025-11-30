@@ -1,5 +1,5 @@
-import { AppError } from '@/common/error/handle-error.app';
-import { HandleError } from '@/common/error/handle-error.decorator';
+import { AppError } from '@/core/error/handle-error.app';
+import { HandleError } from '@/core/error/handle-error.decorator';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileType } from '@prisma';
