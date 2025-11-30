@@ -1,6 +1,9 @@
+import { EventsEnum } from '@/common/enum/queue-events.enum';
+import { successResponse } from '@/common/utils/response.util';
 import { PrismaService } from '@/lib/prisma/prisma.service';
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConversationStatus } from '@prisma';
+import { Socket } from 'socket.io';
 import { ChatGateway } from '../chat.gateway';
 import {
   ConversationActionDto,
@@ -22,440 +25,614 @@ export class ConversationService {
   /**
    * Load paginated list of conversations for a user
    */
-  async loadConversations(userId: string, dto: LoadConversationsDto) {
-    const { page = 1, limit = 20, search } = dto;
-    const skip = (page - 1) * limit;
+  async loadConversations(client: Socket, dto: LoadConversationsDto) {
+    try {
+      const userId = client.data.userId;
+      if (!userId) {
+        return this.chatGateway.emitError(client, 'Unauthorized');
+      }
 
-    this.logger.debug(
-      `Loading conversations for user ${userId}, page ${page}, limit ${limit}`,
-    );
+      const { page = 1, limit = 20, search } = dto;
+      const skip = (page - 1) * limit;
 
-    // Build where clause for search
-    const whereClause: any = {
-      OR: [{ initiatorId: userId }, { receiverId: userId }],
-    };
+      this.logger.debug(
+        `Loading conversations for user ${userId}, page ${page}, limit ${limit}`,
+      );
 
-    if (search) {
-      whereClause.AND = {
-        OR: [
-          {
+      // Build where clause for search
+      const whereClause: any = {
+        OR: [{ initiatorId: userId }, { receiverId: userId }],
+      };
+
+      if (search) {
+        whereClause.AND = {
+          OR: [
+            {
+              initiator: {
+                name: { contains: search, mode: 'insensitive' },
+              },
+            },
+            {
+              receiver: {
+                name: { contains: search, mode: 'insensitive' },
+              },
+            },
+            {
+              lastMessage: {
+                content: { contains: search, mode: 'insensitive' },
+              },
+            },
+          ],
+        };
+      }
+
+      const [conversations, total] = await Promise.all([
+        this.prisma.client.privateConversation.findMany({
+          where: whereClause,
+          include: {
             initiator: {
-              name: { contains: search, mode: 'insensitive' },
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                profilePictureId: true,
+              },
             },
-          },
-          {
             receiver: {
-              name: { contains: search, mode: 'insensitive' },
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                profilePictureId: true,
+              },
             },
-          },
-          {
             lastMessage: {
-              content: { contains: search, mode: 'insensitive' },
+              include: {
+                sender: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+                file: true,
+                statuses: {
+                  where: { userId },
+                },
+              },
+            },
+            messages: {
+              where: {
+                senderId: { not: userId },
+                statuses: {
+                  some: {
+                    userId,
+                    status: { not: 'READ' },
+                  },
+                },
+              },
+              select: { id: true },
             },
           },
-        ],
+          orderBy: {
+            updatedAt: 'desc',
+          },
+          skip,
+          take: limit,
+        }),
+        this.prisma.client.privateConversation.count({ where: whereClause }),
+      ]);
+
+      // Transform conversations to include participant and unread count
+      const transformedConversations = conversations.map((conv) => {
+        const otherParticipant =
+          conv.initiatorId === userId ? conv.receiver : conv.initiator;
+        const unreadCount = conv.messages.length;
+
+        return {
+          id: conv.id,
+          participant: otherParticipant,
+          lastMessage: conv.lastMessage,
+          unreadCount,
+          status: conv.status,
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt,
+        };
+      });
+
+      this.logger.log(
+        `Loaded ${transformedConversations.length} conversations for user ${userId}`,
+      );
+
+      const result = {
+        conversations: transformedConversations,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
       };
+
+      client.emit(
+        EventsEnum.CONVERSATION_LIST_RESPONSE,
+        successResponse(result),
+      );
+      return successResponse(result);
+    } catch (err: any) {
+      this.logger.error('Failed to load conversations', err);
+      return this.chatGateway.emitError(
+        client,
+        err?.message ?? 'Failed to load conversations',
+      );
     }
-
-    const [conversations, total] = await Promise.all([
-      this.prisma.client.privateConversation.findMany({
-        where: whereClause,
-        include: {
-          initiator: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              profilePictureId: true,
-            },
-          },
-          receiver: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              profilePictureId: true,
-            },
-          },
-          lastMessage: {
-            include: {
-              sender: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              file: true,
-              statuses: {
-                where: { userId },
-              },
-            },
-          },
-          messages: {
-            where: {
-              senderId: { not: userId },
-              statuses: {
-                some: {
-                  userId,
-                  status: { not: 'READ' },
-                },
-              },
-            },
-            select: { id: true },
-          },
-        },
-        orderBy: {
-          updatedAt: 'desc',
-        },
-        skip,
-        take: limit,
-      }),
-      this.prisma.client.privateConversation.count({ where: whereClause }),
-    ]);
-
-    // Transform conversations to include participant and unread count
-    const transformedConversations = conversations.map((conv) => {
-      const otherParticipant =
-        conv.initiatorId === userId ? conv.receiver : conv.initiator;
-      const unreadCount = conv.messages.length;
-
-      return {
-        id: conv.id,
-        participant: otherParticipant,
-        lastMessage: conv.lastMessage,
-        unreadCount,
-        status: conv.status,
-        createdAt: conv.createdAt,
-        updatedAt: conv.updatedAt,
-      };
-    });
-
-    this.logger.log(
-      `Loaded ${transformedConversations.length} conversations for user ${userId}`,
-    );
-
-    return {
-      conversations: transformedConversations,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
   }
 
   /**
    * Load a single conversation with paginated messages
    */
-  async loadSingleConversation(userId: string, dto: LoadSingleConversationDto) {
-    const { conversationId, page = 1, limit = 50 } = dto;
-    const skip = (page - 1) * limit;
+  async loadSingleConversation(client: Socket, dto: LoadSingleConversationDto) {
+    try {
+      const userId = client.data.userId;
+      if (!userId) {
+        return this.chatGateway.emitError(client, 'Unauthorized');
+      }
 
-    this.logger.debug(
-      `Loading conversation ${conversationId} for user ${userId}`,
-    );
+      const { conversationId, page = 1, limit = 50 } = dto;
+      const skip = (page - 1) * limit;
 
-    // Verify user is a participant
-    const conversation = await this.prisma.client.privateConversation.findFirst(
-      {
-        where: {
-          id: conversationId,
-          OR: [{ initiatorId: userId }, { receiverId: userId }],
-        },
-        include: {
-          initiator: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              profilePictureId: true,
+      this.logger.debug(
+        `Loading conversation ${conversationId} for user ${userId}`,
+      );
+
+      // Verify user is a participant
+      const conversation =
+        await this.prisma.client.privateConversation.findFirst({
+          where: {
+            id: conversationId,
+            OR: [{ initiatorId: userId }, { receiverId: userId }],
+          },
+          include: {
+            initiator: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                profilePictureId: true,
+              },
+            },
+            receiver: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                profilePictureId: true,
+              },
             },
           },
-          receiver: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              profilePictureId: true,
+        });
+
+      if (!conversation) {
+        return this.chatGateway.emitError(
+          client,
+          'Conversation not found or unauthorized',
+        );
+      }
+
+      // Load messages with pagination
+      const [messages, totalMessages] = await Promise.all([
+        this.prisma.client.privateMessage.findMany({
+          where: { conversationId },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                name: true,
+                profilePictureId: true,
+              },
+            },
+            file: true,
+            statuses: {
+              where: { userId },
             },
           },
-        },
-      },
-    );
+          orderBy: {
+            createdAt: 'desc',
+          },
+          skip,
+          take: limit,
+        }),
+        this.prisma.client.privateMessage.count({ where: { conversationId } }),
+      ]);
 
-    if (!conversation) {
-      throw new Error('Conversation not found or unauthorized');
+      const otherParticipant =
+        conversation.initiatorId === userId
+          ? conversation.receiver
+          : conversation.initiator;
+
+      this.logger.log(
+        `Loaded conversation ${conversationId} with ${messages.length} messages`,
+      );
+
+      const result = {
+        conversation: {
+          id: conversation.id,
+          participant: otherParticipant,
+          status: conversation.status,
+          createdAt: conversation.createdAt,
+          updatedAt: conversation.updatedAt,
+        },
+        messages: messages.reverse(), // Reverse to show oldest first
+        pagination: {
+          page,
+          limit,
+          total: totalMessages,
+          totalPages: Math.ceil(totalMessages / limit),
+        },
+      };
+
+      client.emit(EventsEnum.CONVERSATION_RESPONSE, successResponse(result));
+      return successResponse(result);
+    } catch (err: any) {
+      this.logger.error('Failed to load conversation', err);
+      return this.chatGateway.emitError(
+        client,
+        err?.message ?? 'Failed to load conversation',
+      );
     }
-
-    // Load messages with pagination
-    const [messages, totalMessages] = await Promise.all([
-      this.prisma.client.privateMessage.findMany({
-        where: { conversationId },
-        include: {
-          sender: {
-            select: {
-              id: true,
-              name: true,
-              profilePictureId: true,
-            },
-          },
-          file: true,
-          statuses: {
-            where: { userId },
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        skip,
-        take: limit,
-      }),
-      this.prisma.client.privateMessage.count({ where: { conversationId } }),
-    ]);
-
-    const otherParticipant =
-      conversation.initiatorId === userId
-        ? conversation.receiver
-        : conversation.initiator;
-
-    this.logger.log(
-      `Loaded conversation ${conversationId} with ${messages.length} messages`,
-    );
-
-    return {
-      conversation: {
-        id: conversation.id,
-        participant: otherParticipant,
-        status: conversation.status,
-        createdAt: conversation.createdAt,
-        updatedAt: conversation.updatedAt,
-      },
-      messages: messages.reverse(), // Reverse to show oldest first
-      pagination: {
-        page,
-        limit,
-        total: totalMessages,
-        totalPages: Math.ceil(totalMessages / limit),
-      },
-    };
   }
 
   /**
    * Initiate or retrieve existing conversation with a user
    */
   async initiateConversationWithUser(
-    initiatorId: string,
+    client: Socket,
     dto: InitConversationWithUserDto,
   ) {
-    const { userId: targetUserId } = dto;
+    try {
+      const initiatorId = client.data.userId;
+      if (!initiatorId) {
+        return this.chatGateway.emitError(client, 'Unauthorized');
+      }
 
-    this.logger.debug(
-      `Initiating conversation between ${initiatorId} and ${targetUserId}`,
-    );
+      const { userId: targetUserId } = dto;
 
-    if (initiatorId === targetUserId) {
-      throw new Error('Cannot initiate conversation with yourself');
-    }
+      this.logger.debug(
+        `Initiating conversation between ${initiatorId} and ${targetUserId}`,
+      );
 
-    // Check if conversation already exists (bidirectional)
-    let conversation = await this.prisma.client.privateConversation.findFirst({
-      where: {
-        OR: [
-          { initiatorId, receiverId: targetUserId },
-          { initiatorId: targetUserId, receiverId: initiatorId },
-        ],
-      },
-      include: {
-        initiator: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            profilePictureId: true,
+      if (initiatorId === targetUserId) {
+        return this.chatGateway.emitError(
+          client,
+          'Cannot initiate conversation with yourself',
+        );
+      }
+
+      // Check if conversation already exists (bidirectional)
+      let conversation = await this.prisma.client.privateConversation.findFirst(
+        {
+          where: {
+            OR: [
+              { initiatorId, receiverId: targetUserId },
+              { initiatorId: targetUserId, receiverId: initiatorId },
+            ],
           },
-        },
-        receiver: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            profilePictureId: true,
-          },
-        },
-        lastMessage: {
           include: {
-            sender: {
+            initiator: {
               select: {
                 id: true,
                 name: true,
+                email: true,
+                profilePictureId: true,
               },
             },
-          },
-        },
-      },
-    });
-
-    if (conversation) {
-      this.logger.log(`Found existing conversation ${conversation.id}`);
-    } else {
-      // Verify target user exists
-      const targetUser = await this.prisma.client.user.findUnique({
-        where: { id: targetUserId },
-      });
-
-      if (!targetUser) {
-        throw new Error('Target user not found');
-      }
-
-      // Create new conversation
-      conversation = await this.prisma.client.privateConversation.create({
-        data: {
-          initiatorId,
-          receiverId: targetUserId,
-        },
-        include: {
-          initiator: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              profilePictureId: true,
+            receiver: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                profilePictureId: true,
+              },
             },
-          },
-          receiver: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              profilePictureId: true,
-            },
-          },
-          lastMessage: {
-            include: {
-              sender: {
-                select: {
-                  id: true,
-                  name: true,
+            lastMessage: {
+              include: {
+                sender: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
                 },
               },
             },
           },
         },
-      });
+      );
 
-      this.logger.log(`Created new conversation ${conversation.id}`);
+      if (conversation) {
+        this.logger.log(`Found existing conversation ${conversation.id}`);
+      } else {
+        // Verify target user exists
+        const targetUser = await this.prisma.client.user.findUnique({
+          where: { id: targetUserId },
+        });
+
+        if (!targetUser) {
+          return this.chatGateway.emitError(client, 'Target user not found');
+        }
+
+        // Create new conversation
+        conversation = await this.prisma.client.privateConversation.create({
+          data: {
+            initiatorId,
+            receiverId: targetUserId,
+          },
+          include: {
+            initiator: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                profilePictureId: true,
+              },
+            },
+            receiver: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                profilePictureId: true,
+              },
+            },
+            lastMessage: {
+              include: {
+                sender: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        this.logger.log(`Created new conversation ${conversation.id}`);
+      }
+
+      const otherParticipant =
+        conversation.initiatorId === initiatorId
+          ? conversation.receiver
+          : conversation.initiator;
+
+      const result = {
+        id: conversation.id,
+        participant: otherParticipant,
+        lastMessage: conversation.lastMessage,
+        status: conversation.status,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+      };
+
+      client.emit(EventsEnum.SUCCESS, successResponse(result));
+
+      // Notify the other participant if online
+      const otherUserId = result.participant.id;
+      this.chatGateway.emitToUserFirstSocket(
+        otherUserId,
+        EventsEnum.CONVERSATION_UPDATE,
+        successResponse(result),
+      );
+
+      return successResponse(result);
+    } catch (err: any) {
+      this.logger.error('Failed to initiate conversation', err);
+      return this.chatGateway.emitError(
+        client,
+        err?.message ?? 'Failed to initiate conversation',
+      );
     }
-
-    const otherParticipant =
-      conversation.initiatorId === initiatorId
-        ? conversation.receiver
-        : conversation.initiator;
-
-    return {
-      id: conversation.id,
-      participant: otherParticipant,
-      lastMessage: conversation.lastMessage,
-      status: conversation.status,
-      createdAt: conversation.createdAt,
-      updatedAt: conversation.updatedAt,
-    };
   }
 
   /**
    * Delete a conversation
    */
-  async deleteConversation(userId: string, dto: ConversationActionDto) {
-    const { conversationId } = dto;
+  async deleteConversation(client: Socket, dto: ConversationActionDto) {
+    try {
+      const userId = client.data.userId;
+      if (!userId) {
+        return this.chatGateway.emitError(client, 'Unauthorized');
+      }
 
-    this.logger.debug(
-      `Deleting conversation ${conversationId} for user ${userId}`,
-    );
+      const { conversationId } = dto;
 
-    // Verify user is a participant
-    const conversation = await this.prisma.client.privateConversation.findFirst(
-      {
-        where: {
-          id: conversationId,
-          OR: [{ initiatorId: userId }, { receiverId: userId }],
-        },
-      },
-    );
+      this.logger.debug(
+        `Deleting conversation ${conversationId} for user ${userId}`,
+      );
 
-    if (!conversation) {
-      throw new Error('Conversation not found or unauthorized');
+      // Get conversation details before deleting to notify other participant
+      const conversationData =
+        await this.prisma.client.privateConversation.findFirst({
+          where: {
+            id: conversationId,
+            OR: [{ initiatorId: userId }, { receiverId: userId }],
+          },
+        });
+
+      if (!conversationData) {
+        return this.chatGateway.emitError(
+          client,
+          'Conversation not found or unauthorized',
+        );
+      }
+
+      const otherUserId =
+        conversationData.initiatorId === userId
+          ? conversationData.receiverId
+          : conversationData.initiatorId;
+
+      await this.prisma.client.privateConversation.delete({
+        where: { id: conversationId },
+      });
+
+      this.logger.log(`Deleted conversation ${conversationId}`);
+
+      client.emit(EventsEnum.SUCCESS, successResponse({ success: true }));
+
+      // Notify the other participant if online
+      this.chatGateway.emitToUserFirstSocket(
+        otherUserId,
+        EventsEnum.CONVERSATION_UPDATE,
+        successResponse({
+          conversationId: dto.conversationId,
+          action: 'deleted',
+        }),
+      );
+
+      return successResponse({ success: true });
+    } catch (err: any) {
+      this.logger.error('Failed to delete conversation', err);
+      return this.chatGateway.emitError(
+        client,
+        err?.message ?? 'Failed to delete conversation',
+      );
     }
-
-    await this.prisma.client.privateConversation.delete({
-      where: { id: conversationId },
-    });
-
-    this.logger.log(`Deleted conversation ${conversationId}`);
-
-    return { success: true };
   }
 
   /**
    * Archive a conversation
    */
-  async archiveConversation(userId: string, dto: ConversationActionDto) {
-    const { conversationId } = dto;
+  async archiveConversation(client: Socket, dto: ConversationActionDto) {
+    try {
+      const userId = client.data.userId;
+      if (!userId) {
+        return this.chatGateway.emitError(client, 'Unauthorized');
+      }
 
-    this.logger.debug(
-      `Archiving conversation ${conversationId} for user ${userId}`,
-    );
+      const { conversationId } = dto;
 
-    const conversation = await this.updateConversationStatus(
-      userId,
-      conversationId,
-      ConversationStatus.ARCHIVED,
-    );
+      this.logger.debug(
+        `Archiving conversation ${conversationId} for user ${userId}`,
+      );
 
-    this.logger.log(`Archived conversation ${conversationId}`);
+      const conversation = await this.updateConversationStatus(
+        userId,
+        conversationId,
+        ConversationStatus.ARCHIVED,
+      );
 
-    return conversation;
+      this.logger.log(`Archived conversation ${conversationId}`);
+
+      client.emit(
+        EventsEnum.CONVERSATION_UPDATE,
+        successResponse(conversation),
+      );
+      return successResponse(conversation);
+    } catch (err: any) {
+      this.logger.error('Failed to archive conversation', err);
+      return this.chatGateway.emitError(
+        client,
+        err?.message ?? 'Failed to archive conversation',
+      );
+    }
   }
 
   /**
    * Block a conversation
    */
-  async blockConversation(userId: string, dto: ConversationActionDto) {
-    const { conversationId } = dto;
+  async blockConversation(client: Socket, dto: ConversationActionDto) {
+    try {
+      const userId = client.data.userId;
+      if (!userId) {
+        return this.chatGateway.emitError(client, 'Unauthorized');
+      }
 
-    this.logger.debug(
-      `Blocking conversation ${conversationId} for user ${userId}`,
-    );
+      const { conversationId } = dto;
 
-    const conversation = await this.updateConversationStatus(
-      userId,
-      conversationId,
-      ConversationStatus.BLOCKED,
-    );
+      this.logger.debug(
+        `Blocking conversation ${conversationId} for user ${userId}`,
+      );
 
-    this.logger.log(`Blocked conversation ${conversationId}`);
+      const conversation = await this.updateConversationStatus(
+        userId,
+        conversationId,
+        ConversationStatus.BLOCKED,
+      );
 
-    return conversation;
+      this.logger.log(`Blocked conversation ${conversationId}`);
+
+      client.emit(
+        EventsEnum.CONVERSATION_UPDATE,
+        successResponse(conversation),
+      );
+
+      // Notify the other participant if online
+      const otherUserId = conversation.participant.id;
+      this.chatGateway.emitToUserFirstSocket(
+        otherUserId,
+        EventsEnum.CONVERSATION_UPDATE,
+        successResponse({
+          conversationId: dto.conversationId,
+          action: 'blocked',
+        }),
+      );
+
+      return successResponse(conversation);
+    } catch (err: any) {
+      this.logger.error('Failed to block conversation', err);
+      return this.chatGateway.emitError(
+        client,
+        err?.message ?? 'Failed to block conversation',
+      );
+    }
   }
 
   /**
    * Unblock a conversation
    */
-  async unblockConversation(userId: string, dto: ConversationActionDto) {
-    const { conversationId } = dto;
+  async unblockConversation(client: Socket, dto: ConversationActionDto) {
+    try {
+      const userId = client.data.userId;
+      if (!userId) {
+        return this.chatGateway.emitError(client, 'Unauthorized');
+      }
 
-    this.logger.debug(
-      `Unblocking conversation ${conversationId} for user ${userId}`,
-    );
+      const { conversationId } = dto;
 
-    const conversation = await this.updateConversationStatus(
-      userId,
-      conversationId,
-      ConversationStatus.ACTIVE,
-    );
+      this.logger.debug(
+        `Unblocking conversation ${conversationId} for user ${userId}`,
+      );
 
-    this.logger.log(`Unblocked conversation ${conversationId}`);
+      const conversation = await this.updateConversationStatus(
+        userId,
+        conversationId,
+        ConversationStatus.ACTIVE,
+      );
 
-    return conversation;
+      this.logger.log(`Unblocked conversation ${conversationId}`);
+
+      client.emit(
+        EventsEnum.CONVERSATION_UPDATE,
+        successResponse(conversation),
+      );
+
+      // Notify the other participant if online
+      const otherUserId = conversation.participant.id;
+      this.chatGateway.emitToUserFirstSocket(
+        otherUserId,
+        EventsEnum.CONVERSATION_UPDATE,
+        successResponse({
+          conversationId: dto.conversationId,
+          action: 'unblocked',
+        }),
+      );
+
+      return successResponse(conversation);
+    } catch (err: any) {
+      this.logger.error('Failed to unblock conversation', err);
+      return this.chatGateway.emitError(
+        client,
+        err?.message ?? 'Failed to unblock conversation',
+      );
+    }
   }
 
   /**
