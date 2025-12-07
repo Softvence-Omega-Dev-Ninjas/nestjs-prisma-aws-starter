@@ -1,3 +1,9 @@
+## [1.0.2](https://github.com/shahadathhs/nestjs-prisma-aws-starter/compare/v1.0.1...v1.0.2) (2025-12-07)
+
+### Bug Fixes
+
+- dockerization error fix ([e405bf4](https://github.com/shahadathhs/nestjs-prisma-aws-starter/commit/e405bf44d842e45451167efc7e7eea18811b75ab))
+
 ## [1.0.1](https://github.com/shahadathhs/nestjs-prisma-aws-starter/compare/v1.0.0...v1.0.1) (2025-12-07)
 
 ### Bug Fixes
