@@ -8,7 +8,7 @@ export class FileService implements OnModuleInit {
 
   async onModuleInit() {
     this.logger.log('FileService initialized and directories checked.');
-    this.ensureDirectoriesExist(['uploads', 'temp']);
+    this.ensureDirectoriesExist(['uploads', 'temp', 'logs']);
   }
 
   private ensureDirectoriesExist(folders: string[]) {

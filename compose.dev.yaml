@@ -28,9 +28,10 @@ services:
       # Keep node_modules in container
       - /usr/src/app/node_modules
 
-      # Mount uploads and temp directories
+      # Mount uploads temp & logs directories
       - ./uploads:/usr/src/app/uploads
       - ./temp:/usr/src/app/temp
+      - ./logs:/usr/src/app/logs
     depends_on:
       db:
         condition: service_healthy

@@ -88,6 +88,8 @@ ps:
 # ==========================================
 # Development Commands (Full Docker)
 # ==========================================
+dev-build:
+	docker compose -f $(DEV_COMPOSE_FILE) build
 
 dev-up:
 	docker compose -f $(DEV_COMPOSE_FILE) up -d

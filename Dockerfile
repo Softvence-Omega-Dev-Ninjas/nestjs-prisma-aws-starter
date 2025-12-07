@@ -11,9 +11,12 @@ WORKDIR /app
 RUN apt update && apt install -y openssl
 
 # Copy package, lock file & prisma folder
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml .npmrc ./
 COPY prisma.config.ts ./
 COPY prisma ./prisma
+
+# Allow pnpm to build packages
+RUN pnpm config set allowed-builds '*' -g
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
