@@ -17,6 +17,7 @@ COPY package.json pnpm-lock.yaml .npmrc ./
 RUN pnpm config set allowed-builds '*' -g
 
 # Install dependencies
+ENV NODE_ENV=development
 RUN pnpm install
 
 # Copy Prisma schema + config
